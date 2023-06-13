@@ -39,6 +39,13 @@ except ImportError:
     mp = None
 
 
+try:
+    from aipore._initializers import Tsfresh
+
+    _MP = Tsfresh.mp_func()
+except Exception:
+    _MP = None
+
 from tsfresh.utilities.string_manipulation import convert_to_output_format
 
 with warnings.catch_warnings():
@@ -2368,7 +2375,7 @@ def benford_correlation(x):
 
 
 @set_property("fctype", "combiner")
-@set_property("dependency_available", mp is not None)
+@set_property("dependency_available", mp is not None or _MP is not None)
 def matrix_profile(x, param):
     """
     Calculates the 1-D Matrix Profile[1] and returns Tukey's Five Number Set plus the mean of that Matrix Profile.
@@ -2392,28 +2399,35 @@ def matrix_profile(x, param):
     :return: the different feature values
     :return type: pandas.Series
     """
-    if mp is None:
-        raise ImportError(
-            "Could not import matrixprofile but it was required. Please install the extra to use it."
-        )
 
     x = np.asarray(x)
 
-    def _calculate_mp(**kwargs):
-        """Calculate the matrix profile using the specified window, or the max subsequence if no window is specified"""
-        try:
-            if "windows" in kwargs:
-                m_p = mp.compute(x, **kwargs)["mp"]
+    if _MP is not None:
+        def _calculate_mp(**kwargs):
+            try:
+                return _MP(x, **kwargs)
+            except ValueError:
+                return [np.nan]
+    elif mp is None:
+        raise ImportError(
+            "Could not import matrixprofile but it was required. Please install the extra to use it."
+        )
+    else:
+        def _calculate_mp(**kwargs):
+            """Calculate the matrix profile using the specified window, or the max subsequence if no window is specified"""
+            try:
+                if "windows" in kwargs:
+                    m_p = mp.compute(x, **kwargs)["mp"]
 
-            else:
-                m_p = mp.algorithms.maximum_subsequence(x, include_pmp=True, **kwargs)[
-                    "pmp"
-                ][-1]
+                else:
+                    m_p = mp.algorithms.maximum_subsequence(x, include_pmp=True, **kwargs)[
+                        "pmp"
+                    ][-1]
 
-            return m_p
+                return m_p
 
-        except NoSolutionPossible:
-            return [np.nan]
+            except NoSolutionPossible:
+                return [np.nan]
 
     # The already calculated matrix profiles
     matrix_profiles = {}
